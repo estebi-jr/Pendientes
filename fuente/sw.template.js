@@ -41,3 +41,35 @@ self.addEventListener('fetch',e=>{
     }));
   }
 });
+
+/* ---- Resumen de la mañana ----
+   El servidor solo "despierta" al teléfono (push sin contenido). El resumen se arma aquí, con la copia de lo pendiente
+   que la app guarda en IndexedDB, usando la misma lógica de fechas de la app (build.py copia el bloque CORE). */
+let PC=null; /* si algo de esto fallara en un navegador viejo, el modo sin internet igual sigue funcionando */
+try{PC=(()=>{
+/*__CORE__*/
+return {todayStr,morningSummary};
+})()}catch(e){PC=null}
+function idbGet(key){
+  return new Promise(res=>{
+    let rq;try{rq=indexedDB.open('pendientes',1)}catch(e){res(null);return}
+    rq.onupgradeneeded=()=>{try{rq.result.createObjectStore('kv')}catch(e){}};
+    rq.onerror=()=>res(null);
+    rq.onsuccess=()=>{const db=rq.result;try{const g=db.transaction('kv','readonly').objectStore('kv').get(key);g.onsuccess=()=>{db.close();res(g.result||null)};g.onerror=()=>{db.close();res(null)}}catch(e){db.close();res(null)}};
+  });
+}
+async function showSummary(){
+  let snap=null;try{snap=await idbGet('snapshot')}catch(e){}
+  let msg={title:'Pendientes',body:'Abre la app para ver lo que te queda hoy.',n:null};
+  try{if(PC&&snap&&Array.isArray(snap.tasks))msg=PC.morningSummary(snap.tasks,PC.todayStr())}catch(e){}
+  /* iOS exige mostrar una notificación por cada push: si no, quita el permiso */
+  const jobs=[self.registration.showNotification(msg.title,{body:msg.body,tag:'pend-resumen',renotify:true,icon:'icon-192.png',data:{url:'./'}})];
+  /* el número del ícono nunca debe dejar colgado el aviso: se espera como máximo 3 segundos */
+  if(snap&&snap.badge&&msg.n!=null&&self.navigator&&('setAppBadge' in self.navigator)){try{const b=msg.n?self.navigator.setAppBadge(msg.n):self.navigator.clearAppBadge();jobs.push(Promise.race([Promise.resolve(b).catch(()=>{}),new Promise(r=>setTimeout(r,3000))]))}catch(e){}}
+  await Promise.all(jobs);
+}
+self.addEventListener('push',e=>{e.waitUntil(showSummary())});
+self.addEventListener('notificationclick',e=>{
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({type:'window',includeUncontrolled:true}).then(list=>{for(const c of list){if('focus' in c)return c.focus()}return self.clients.openWindow?self.clients.openWindow('./'):null}));
+});

@@ -389,6 +389,23 @@ input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:d
 .stat{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}
 .stat b{font-size:30px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .stat span{font-size:14px;color:var(--ink-2)}
+.s-switch{display:flex;align-items:center;gap:12px;width:100%;min-height:60px;padding:10px 12px 10px 14px;border-radius:14px;background:var(--paper);border:1px solid var(--line);text-align:left}
+.s-switch .t{flex:1;min-width:0}
+.s-switch .t b{display:block;font-size:15px;font-weight:680;color:var(--ink)}
+.s-switch .t span{display:block;font-size:13px;color:var(--ink-2);line-height:1.35;margin-top:2px}
+.s-switch .knob{flex:none;position:relative;width:51px;height:31px;border-radius:16px;background:color-mix(in srgb,var(--ink-3) 34%,var(--paper));transition:background-color .2s}
+.s-switch .knob::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.25);transition:transform .25s cubic-bezier(.3,1.25,.5,1)}
+.s-switch[aria-checked="true"] .knob{background:var(--blue)}
+.s-switch[aria-checked="true"] .knob::after{transform:translateX(20px)}
+.s-note{margin-top:10px}
+.s-stack{display:grid;gap:8px}
+.s-switch[aria-busy="true"]{opacity:.6;pointer-events:none}
+.s-daily{display:flex;align-items:center;gap:10px;padding:2px 2px 4px}
+.s-hour{display:flex;align-items:center;gap:8px;flex:1;min-width:0;font-size:15px;font-weight:620;color:var(--ink-2)}
+.s-hour select{height:40px;border-radius:11px;border:1px solid var(--line);background:var(--paper);color:var(--ink);padding:0 10px;font-size:16px;font-weight:620}
+.btn:disabled{opacity:.45}
+.bdemo{position:relative;display:block}
+.bdemo b{position:absolute;top:-7px;right:-8px;min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:var(--late);color:#fff;font-size:13px;font-weight:750;line-height:22px;text-align:center;box-shadow:0 0 0 2px var(--paper);font-variant-numeric:tabular-nums}
 
 /* ---------- Toast y confeti ---------- */
 .toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom,0px));z-index:70;display:flex;align-items:center;gap:16px;max-width:calc(100% - 32px);padding:12px 14px 12px 16px;border-radius:14px;background:var(--toast-bg);color:var(--toast-ink);font-size:15px;font-weight:620;box-shadow:0 14px 30px -12px rgba(0,0,0,.55);opacity:0;transform:translate(-50%,16px);pointer-events:none;transition:opacity .2s,transform .25s}
@@ -532,6 +549,28 @@ function whenText(w,today){
   if(w.horizon==='semana'){if(w.due===weekEnd(today))return 'esta semana';if(w.due===addDays(weekEnd(today),7))return 'la próxima semana';return 'la semana del '+fmtShort(weekStart(w.due))}
   if(w.horizon==='mes'){if(w.due.slice(0,7)===today.slice(0,7))return 'este mes';return MONTHS[parseYMD(w.due).getMonth()]}
   return '';
+}
+
+/* ---- lo que queda hoy (anillo del encabezado y número del ícono) ---- */
+function forToday(t,today){return !!t.due&&(t.due===today||(t.horizon==='finde'&&t.due===addDays(today,1)))}
+function leftToday(tasks,today){let n=0;for(const t of tasks)if(t&&!t.done&&t.due&&(t.due<=today||forToday(t,today)))n++;return n}
+/* ---- resumen de la mañana (lo arma el service worker al llegar el aviso, con los datos del teléfono) ---- */
+function clipText(s,n){s=String(s||'').replace(/\s+/g,' ').trim();return s.length>n?s.slice(0,n-1).trimEnd()+'…':s}
+function inDaysText(d){return d===1?'mañana':'en '+d+' días'}
+function morningSummary(tasks,today){
+  const pend=(tasks||[]).filter(t=>t&&!t.done),byDue=(a,b)=>a.due<b.due?-1:a.due>b.due?1:0,rank=k=>k==='evaluacion'?0:k==='entrega'?1:2;
+  const late=pend.filter(t=>t.due&&t.due<today).sort(byDue);
+  const hoy=pend.filter(t=>forToday(t,today)).sort((a,b)=>rank(a.kind)-rank(b.kind));
+  const next=pend.filter(t=>t.kind!=='tarea'&&t.due&&t.due>today&&!forToday(t,today)&&diffDays(today,t.due)<=7).sort(byDue)[0];
+  const nextLine=next?clipText(next.title,48)+' '+inDaysText(diffDays(today,next.due)):'';
+  const n=late.length+hoy.length;
+  if(!n)return {n:0,late:0,title:next?'Nada para hoy':'Día despejado',body:next?nextLine+'.':'No tienes nada para hoy.'};
+  let title=n===1?'Hoy te queda 1 tarea':'Hoy te quedan '+n+' tareas';
+  if(late.length)title+=' · '+late.length+(late.length===1?' atrasada':' atrasadas');
+  const list=late.concat(hoy),lines=list.slice(0,3).map(t=>clipText(t.title,42));
+  if(list.length>3)lines.push('y '+(list.length-3)+' más');
+  if(next)lines.push(nextLine);
+  return {n,late:late.length,title,body:lines.join('\n')};
 }
 
 /* ---- normalización ---- */
@@ -756,7 +795,7 @@ const reduceMotion=!!(window.matchMedia&&matchMedia('(prefers-reduced-motion: re
 function hash(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return Math.abs(h)}
 function newId(){return 't'+Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
 
-const LS={cache:'pendientes:cache:v1',local:'pendientes:local:v1',theme:'pendientes:theme',celeb:'pendientes:celebrated',tip:'pendientes:tip:v1',tab:'pendientes:tab',install:'pendientes:install-hint',lastBackup:'pendientes:last-backup'};
+const LS={cache:'pendientes:cache:v1',local:'pendientes:local:v1',theme:'pendientes:theme',celeb:'pendientes:celebrated',tip:'pendientes:tip:v1',tab:'pendientes:tab',install:'pendientes:install-hint',lastBackup:'pendientes:last-backup',badge:'pendientes:badge',avisosCard:'pendientes:avisos-card',daily:'pendientes:daily',pushKey:'pendientes:push-key'};
 function lsGet(k){try{const v=localStorage.getItem(k);return v==null?null:JSON.parse(v)}catch(e){return null}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 function lsDel(k){try{localStorage.removeItem(k)}catch(e){}}
@@ -808,7 +847,6 @@ function passFilter(t){if(S.filter==='all')return true;if(t.category!==S.filter)
 function pendingList(){return pendingAll().filter(passFilter)}
 function allSubjects(){const a=S.config.subjects.slice();for(const t of S.tasks.values())if(t.subject)a.push(t.subject);return uniqSorted(a)}
 function ageDays(t,today){return diffDays(t.created,today)}
-function forToday(t,today){return !!t.due&&(t.due===today||(t.horizon==='finde'&&t.due===addDays(today,1)))}
 const kindRank=k=>k==='evaluacion'?0:k==='entrega'?1:2;
 function sortCreated(a,b){return a.created<b.created?-1:a.created>b.created?1:((a.createdAt||'')<(b.createdAt||'')?-1:1)}
 function sortToday(a,b){return kindRank(a.kind)-kindRank(b.kind)||sortCreated(a,b)}
@@ -983,6 +1021,7 @@ function render(){
   const hoyTab=$('.tab[data-tab="hoy"]');let badge=hoyTab.querySelector('.badge');
   if(late){if(!badge){badge=document.createElement('span');badge.className='badge';hoyTab.appendChild(badge)}badge.textContent=late;hoyTab.setAttribute('aria-label','Hoy, '+late+(late===1?' atrasada':' atrasadas'))}
   else{if(badge)badge.remove();hoyTab.removeAttribute('aria-label')}
+  syncBadge();syncSnapshot();
 }
 function renderHeader(){
   const today=S.today,w=postWeek(today),d=parseYMD(today);
@@ -997,7 +1036,7 @@ function renderHeader(){
   const ring=$('#ring');
   if(S.tab==='hoy'){
     const all=allTasks();
-    const pend=all.filter(t=>!t.done&&t.due&&(t.due<=today||forToday(t,today))).length;
+    const pend=leftToday(all,today);
     const done=all.filter(t=>t.done&&t.doneAt&&localDate(t.doneAt)===today).length;
     const total=pend+done;
     if(total){
@@ -1060,7 +1099,7 @@ function viewHoy(){
   const doneToday=allTasks().filter(t=>t.done&&t.doneAt&&localDate(t.doneAt)===today&&passFilter(t)).sort((a,b)=>a.doneAt<b.doneAt?1:-1);
   let h=statusBanner();
   h+=installCard();
-  if(WEB&&!lsGet(LS.tip))h+=tipCard();
+  if(WEB&&!lsGet(LS.tip))h+=tipCard();else h+=avisosCardHTML();
   if(!late.length&&!hoy.length){
     const fn=filterName();
     if(S.mode==='connecting'&&!S.tasks.size)h+='<p class="muted-center">Cargando tus tareas…</p>';
@@ -1270,7 +1309,7 @@ function toast(msg,action){
   const el=$('#toast');
   el.innerHTML='<span>'+esc(msg)+'</span>'+(action?'<button type="button" class="toast-act">'+esc(action.label)+'</button>':'');
   if(action)el.querySelector('.toast-act').onclick=()=>{hideToast();action.fn()};
-  el.classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(hideToast,action?5000:2800);
+  el.classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(hideToast,action?5000:Math.min(7000,Math.max(2800,String(msg).length*60)));
 }
 function hideToast(){$('#toast').classList.remove('on')}
 
@@ -1443,6 +1482,7 @@ function renderSettings(){
   const ws=weekStart(S.today),weekDone=done.filter(t=>(localDate(t.doneAt)||'')>=ws).length;
   let h='<section class="s-block"><h3>Colores de los post-its</h3><div class="s-colors">'+[1,2,3,4].map(w=>'<div class="s-col"><span class="bignote w'+w+'">'+WEEK_RANGE[w]+'</span><span>'+cap1(WEEK_COLOR[w])+'</span></div>').join('')+'</div><p class="s-p">El color se fija el día que anotas la tarea y no cambia si la postergas. Así, un color de una semana anterior te avisa que algo se está arrastrando.</p><p class="s-p">Como los colores se repiten cada mes, las tareas con 4 semanas o más llevan la marca +1 mes en rojo.</p></section>';
   h+='<section class="s-block"><h3>Tema</h3><div class="seg">'+[['auto','Automático'],['light','Claro'],['dark','Oscuro']].map(([k,l])=>'<button type="button" data-act="s-theme" data-theme="'+k+'" aria-pressed="'+(theme===k)+'">'+l+'</button>').join('')+'</div></section>';
+  h+=avisosSectionHTML();
   h+='<section class="s-block"><h3>Mis ramos</h3><p class="s-p">Si el nombre de un ramo aparece en una tarea, se marca como Universidad con ese ramo.</p><div class="pills">'+(subs.length?subs.map(s=>'<span class="pill tag">'+esc(s)+'<button type="button" data-act="s-delsubj" data-subj="'+esc(s)+'" aria-label="Quitar '+esc(s)+'">'+icon('close')+'</button></span>').join(''):'<span class="s-p">Todavía no agregas ramos.</span>')+'</div><div class="s-add"><input type="text" id="sSubjNew" placeholder="Ej: Microeconomía" maxlength="40" enterkeyhint="done" aria-label="Nuevo ramo"><button type="button" class="btn small" data-act="s-addsubj">Agregar</button></div></section>';
   h+='<section class="s-block"><h3>Detección de categorías</h3><p class="s-p">'+(learnedN?'La app aprendió '+learnedN+(learnedN===1?' ajuste':' ajustes')+' de tus correcciones.':'Cuando corriges la categoría de una tarea, la app lo aprende para la próxima.')+'</p>'+(learnedN?'<div class="s-add"><button type="button" class="btn small'+(S.resetArmed?' armed':'')+'" data-act="s-resetlearn">'+(S.resetArmed?'Toca otra vez para borrar':'Borrar lo aprendido')+'</button></div>':'')+'</section>';
   h+='<section class="s-block"><h3>Completadas</h3><div class="stat"><b>'+weekDone+'</b><span>'+(weekDone===1?'tarea completada':'tareas completadas')+' esta semana</span></div>'+(done.length?'<ul class="hist">'+done.slice(0,40).map(t=>'<li><span class="sw w'+postWeek(t.created)+'"></span><span class="t">'+esc(t.title)+'</span><span class="d">'+(t.doneAt?fmtShort(localDate(t.doneAt)):'')+'</span><button type="button" data-act="s-restore" data-id="'+esc(t.id)+'">Restaurar</button></li>').join('')+'</ul>':'<p class="s-p">Aún no completas tareas.</p>')+'<p class="s-p" style="margin-top:10px">'+(LOCAL_ONLY?'Las completadas hace más de dos meses se guardan solo como parte del clavo de su mes, para mantener la app liviana.':'Las completadas hace más de dos meses se archivan solas para no llenar la base de datos.')+'</p></section>';
@@ -1503,6 +1543,11 @@ document.addEventListener('click',e=>{
     case 's-share':shareBackup().then(r=>{if(r==='ok'){toast('Respaldo guardado');renderSettings()}else if(r==='fail')toast('No se pudo crear el respaldo en este dispositivo.')});break;
     case 'install':if(installEvt){const ev=installEvt;installEvt=null;try{ev.prompt();ev.userChoice.finally(()=>render())}catch(err){}}break;
     case 'install-x':lsSet(LS.install,true);render();break;
+    case 'avisos-on':if(pushCan())enableDaily({hour:8,withBadge:true});else enableBadge();break;
+    case 'avisos-card-x':lsSet(LS.avisosCard,true);render();break;
+    case 's-daily':if(dailyOn())disableDaily();else enableDaily({});break;
+    case 's-daily-test':testDaily();break;
+    case 's-badge':if(badgeOn())disableBadge();else enableBadge();break;
     case 's-export':{S.backup='export';renderSettings();copyText(backupText()).then(ok=>toast(ok?'Respaldo copiado. Pégalo en Notas o WhatsApp.':'Selecciona el texto y cópialo.'));break}
     case 's-import-open':S.backup='import';renderSettings();{const ta=$('#sRestoreText');if(ta)ta.focus()}break;
     case 's-import':{const n=restoreBackup(($('#sRestoreText')||{}).value);if(n<0){toast('Ese texto no es un respaldo válido.');break}S.backup=null;renderSettings();toast(n===1?'Se restauró 1 tarea':'Se restauraron '+n+' tareas');break}
@@ -1512,6 +1557,7 @@ document.addEventListener('click',e=>{
 $('#quickForm').addEventListener('submit',e=>{e.preventDefault();submitQuick()});
 $('#qText').addEventListener('input',()=>{if(!$('#qText').value.trim())Q.ignoreParse=false;renderQuick()});
 document.addEventListener('change',e=>{
+  if(e.target.id==='sDailyHour'){setDailyHour(+e.target.value);return}
   if(e.target.id==='sRestoreFile'){const f=e.target.files&&e.target.files[0];if(!f)return;f.text().then(txt=>{const n=restoreBackup(txt);if(n<0){toast('Ese archivo no es un respaldo de Pendientes.');return}S.backup=null;renderSettings();toast(n===1?'Se restauró 1 tarea':'Se restauraron '+n+' tareas')}).catch(()=>toast('No se pudo leer el archivo.'));return}
   if(e.target.id==='qDate'){const v=e.target.value;if(isYMD(v)){Q.manualWhen='fecha';Q.customDate=v;Q.sticky=false;renderQuick()}}
   if(e.target.id==='eDate'){const v=e.target.value;if(isYMD(v)&&E){syncEditText();E.horizon='dia';E.due=v;renderEdit()}}
@@ -1529,7 +1575,7 @@ document.addEventListener('keydown',e=>{
 });
 window.addEventListener('scroll',()=>{$('#top').classList.toggle('scrolled',window.scrollY>4)},{passive:true});
 function refreshIfNewDay(){if(todayStr()!==S.today){render();if($('#quick').classList.contains('on'))renderQuick()}}
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshIfNewDay()});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='visible')return;refreshIfNewDay();syncBadge(true);if(avisosCan()&&Notification.permission!==S.notifPerm)refreshSettings();dailyResync()});
 setInterval(refreshIfNewDay,60000);
 
 /* ---- deslizar filas ---- */
@@ -1592,11 +1638,204 @@ if(WEB){
   if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))window.addEventListener('load',()=>{navigator.serviceWorker.register('./sw.js').catch(()=>{})});
 }
 
+/* ---- avisos: número en el ícono y resumen de la mañana (solo en la app instalada) ----
+   En iOS los dos van amarrados al permiso de notificaciones. El servidor (servidor/pendientes-push.js) solo guarda la
+   dirección de notificaciones y la hora; el resumen lo arma el service worker con la copia en IndexedDB de este teléfono. */
+const PUSH_URL='https://pendientes-push.esteban-lands.workers.dev';
+const DEVICE=IS_IOS?'el iPhone':'tu dispositivo';
+let badgeLast=null,swReg=null,snapLast=null,snapTimer=null,resyncing=false;
+function badgeCan(){return WEB&&STANDALONE&&('setAppBadge' in navigator)&&('Notification' in window)}
+function pushCan(){return WEB&&STANDALONE&&!!PUSH_URL&&('serviceWorker' in navigator)&&('PushManager' in window)&&('Notification' in window)}
+function avisosCan(){return badgeCan()||pushCan()}
+function badgeOn(){return badgeCan()&&lsGet(LS.badge)===true&&Notification.permission==='granted'}
+function dailyState(){const d=lsGet(LS.daily);return d&&typeof d==='object'?d:{on:false,hour:8}}
+function dailyOn(){return pushCan()&&dailyState().on===true}
+function saveDaily(patch){lsSet(LS.daily,Object.assign({},dailyState(),patch))}
+function refreshSettings(){if($('#settings').classList.contains('on'))renderSettings()}
+function deniedMsg(){return IS_IOS?'El iPhone bloqueó el permiso. Actívalo en Ajustes › Notificaciones › Pendientes.':'Tu dispositivo bloqueó el permiso de notificaciones. Actívalo en su configuración.'}
+function syncBadge(force){
+  if(!badgeCan()||S.mode!=='local')return;
+  const n=badgeOn()?leftToday(allTasks(),S.today):0;
+  if(!force&&n===badgeLast)return;
+  badgeLast=n;
+  try{const p=n?navigator.setAppBadge(n):navigator.clearAppBadge();if(p&&typeof p.catch==='function')p.catch(()=>{})}catch(e){}
+}
+/* copia mínima de lo pendiente para el service worker (IndexedDB 'pendientes', almacén 'kv', clave 'snapshot') */
+function idbPut(key,val){
+  return new Promise((res,rej)=>{
+    let rq;try{rq=indexedDB.open('pendientes',1)}catch(e){rej(e);return}
+    rq.onupgradeneeded=()=>{try{rq.result.createObjectStore('kv')}catch(e){}};
+    rq.onerror=()=>rej(rq.error);
+    rq.onsuccess=()=>{const db=rq.result;try{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').put(val,key);tx.oncomplete=()=>{db.close();res()};tx.onerror=tx.onabort=()=>{db.close();rej(tx.error)}}catch(e){db.close();rej(e)}};
+  });
+}
+function syncSnapshot(force){
+  if(!pushCan()||S.mode!=='local'||(!force&&!dailyOn()))return;
+  const snap={v:1,badge:badgeOn(),tasks:pendingAll().map(t=>({title:t.title,due:t.due,horizon:t.horizon,kind:t.kind}))};
+  const js=JSON.stringify(snap);
+  if(!force&&js===snapLast)return;
+  snapLast=js;clearTimeout(snapTimer);
+  snapTimer=setTimeout(()=>{idbPut('snapshot',Object.assign({savedAt:new Date().toISOString()},snap)).catch(()=>{snapLast=null})},force?0:250);
+}
+/* suscripción push */
+function b64uToU8(s){s=String(s).replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const b=atob(s),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u}
+function sameKey(sub,key){try{const a=new Uint8Array((sub.options&&sub.options.applicationServerKey)||[]),b=b64uToU8(key);if(a.length!==b.length)return false;for(let i=0;i<a.length;i++)if(a[i]!==b[i])return false;return true}catch(e){return false}}
+function swReady(){if(swReg)return Promise.resolve(swReg);if(!('serviceWorker' in navigator))return Promise.resolve(null);return Promise.race([navigator.serviceWorker.ready,sleep(8000).then(()=>null)]).then(r=>{if(r)swReg=r;return r},()=>null)}
+async function pushApi(path,body,method){
+  const ctl=typeof AbortController==='function'?new AbortController():null,t=setTimeout(()=>{if(ctl)ctl.abort()},9000);
+  try{
+    const r=await fetch(PUSH_URL+path,{method:method||'POST',headers:body?{'Content-Type':'text/plain'}:{},body:body?JSON.stringify(body):undefined,signal:ctl?ctl.signal:undefined,cache:'no-store'});
+    let j=null;try{j=await r.json()}catch(e){}
+    return {ok:r.ok,status:r.status,data:j};
+  }catch(e){return {ok:false,status:0,data:null}}finally{clearTimeout(t)}
+}
+async function vapidKey(){
+  const c=lsGet(LS.pushKey);if(typeof c==='string'&&c.length>80)return c;
+  const r=await pushApi('/key',null,'GET');
+  if(r.ok&&r.data&&typeof r.data.key==='string'&&r.data.key.length>80){lsSet(LS.pushKey,r.data.key);return r.data.key}
+  return null;
+}
+function subBody(sub,hour){let tz='America/Santiago';try{tz=Intl.DateTimeFormat().resolvedOptions().timeZone||tz}catch(e){}return {subscription:sub.toJSON(),hour:hour,tz:tz}}
+async function ensureSub(reg,key){
+  let sub=await reg.pushManager.getSubscription();
+  if(sub&&!sameKey(sub,key)){try{await sub.unsubscribe()}catch(e){}sub=null}
+  return sub||reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64uToU8(key)});
+}
+function askNotifPermission(){
+  /* se llama dentro del toque: iOS solo muestra el permiso si viene de un gesto del usuario */
+  return new Promise(res=>{
+    let done=false;const fin=v=>{if(done)return;done=true;res(typeof v==='string'?v:Notification.permission)};
+    try{const r=Notification.requestPermission(fin);if(r&&typeof r.then==='function')r.then(fin,()=>fin())}catch(e){fin()}
+  });
+}
+function enableBadge(){
+  if(!badgeCan())return;
+  const after=r=>{
+    if(r==='granted'){
+      lsSet(LS.badge,true);lsSet(LS.avisosCard,true);syncBadge(true);
+      const n=leftToday(allTasks(),S.today);
+      toast(n?'Listo: el ícono muestra '+(n===1?'1 tarea':n+' tareas')+' para hoy':'Listo. Hoy no te queda nada, así que el ícono está limpio');
+    }else if(r==='denied'){lsSet(LS.avisosCard,true);toast(deniedMsg())}
+    render();refreshSettings();
+  };
+  const perm=Notification.permission;
+  if(perm==='granted'){haptic();after('granted');return}
+  if(perm==='denied'){after('denied');return}
+  askNotifPermission().then(after);
+}
+function disableBadge(){haptic();lsSet(LS.badge,false);syncBadge(true);render();refreshSettings();toast('Listo, el ícono ya no muestra el número')}
+function enableDaily(o){
+  o=o||{};
+  if(!pushCan()){enableBadge();return}
+  if(S.avisosBusy)return;
+  if(Notification.permission==='denied'){lsSet(LS.avisosCard,true);toast(deniedMsg());render();refreshSettings();return}
+  const hour=o.hour!=null?o.hour:(dailyState().hour||8),key=lsGet(LS.pushKey);
+  let p;
+  if(swReg&&typeof key==='string'&&key.length>80){
+    /* Apple pide llamar a subscribe de inmediato dentro del toque: esto mismo muestra el permiso */
+    p=swReg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64uToU8(key)}).then(sub=>sameKey(sub,key)?sub:ensureSub(swReg,key),err=>{
+      if(Notification.permission==='granted')return ensureSub(swReg,key); /* p. ej. quedó una suscripción con otra llave */
+      throw err;
+    });
+  }else{
+    /* sin la llave del servidor a mano: primero el permiso (dentro del toque) y después la suscripción */
+    p=askNotifPermission().then(r=>{
+      if(r!=='granted'){const e=new Error('perm');e.perm=r;throw e}
+      return Promise.all([vapidKey(),swReady()]).then(([k,reg])=>{if(!k||!reg)throw new Error('server');return ensureSub(reg,k)});
+    });
+  }
+  S.avisosBusy=true;refreshSettings();
+  p.then(async sub=>{
+    const r=await pushApi('/subscribe',subBody(sub,hour));
+    lsSet(LS.daily,{on:true,hour:hour,endpoint:sub.endpoint,syncedAt:r.ok?S.today:null});
+    lsSet(LS.avisosCard,true);
+    if(o.withBadge&&badgeCan())lsSet(LS.badge,true);
+    syncBadge(true);syncSnapshot(true);
+    toast(r.ok?'Listo: cada mañana a las '+hour+':00 te llega el resumen':'Quedó activado, pero falta avisarle al servidor. Se reintenta solo cuando abras la app con internet.');
+  },err=>{
+    const perm=Notification.permission;
+    if(perm==='denied'||(err&&err.perm==='denied')){lsSet(LS.avisosCard,true);toast(deniedMsg());return}
+    if(perm==='granted'&&o.withBadge&&badgeCan()){lsSet(LS.badge,true);lsSet(LS.avisosCard,true);syncBadge(true);toast('El número en el ícono quedó activo. El resumen no se pudo activar: inténtalo de nuevo en Ajustes con internet.');return}
+    if(perm==='granted')toast('No se pudo activar el resumen. Revisa tu internet e intenta de nuevo.');
+  }).finally(()=>{S.avisosBusy=false;render();refreshSettings()});
+}
+function disableDaily(){
+  if(S.avisosBusy)return;
+  haptic();saveDaily({on:false,syncedAt:null});
+  render();refreshSettings();toast('Listo, ya no te llega el resumen');
+  swReady().then(reg=>reg&&reg.pushManager.getSubscription()).then(sub=>{if(!sub)return;pushApi('/unsubscribe',{endpoint:sub.endpoint});return sub.unsubscribe()}).catch(()=>{});
+}
+function setDailyHour(h){
+  const d=dailyState();if(!d.on||!(h>=0&&h<=23)||h===d.hour)return;
+  saveDaily({hour:h,syncedAt:null});
+  const offline=()=>{toast('Sin conexión: la hora se actualiza sola cuando abras la app con internet.');refreshSettings()};
+  swReady().then(reg=>reg&&reg.pushManager.getSubscription()).then(sub=>{
+    if(!sub){dailyResync(true);offline();return}
+    return pushApi('/subscribe',subBody(sub,h)).then(r=>{if(!r.ok){offline();return}saveDaily({syncedAt:S.today,endpoint:sub.endpoint});toast('Listo: el resumen llega a las '+h+':00');refreshSettings()});
+  }).catch(offline);
+}
+function testCooling(){return !!S.testAt&&performance.now()-S.testAt<15000}
+function testDaily(){
+  if(testCooling())return;
+  S.testAt=performance.now();
+  const btn=$('[data-act="s-daily-test"]');if(btn)btn.disabled=true;
+  setTimeout(()=>{const b=$('[data-act="s-daily-test"]');if(b)b.disabled=false},15100);
+  syncSnapshot(true);
+  swReady().then(reg=>reg&&reg.pushManager.getSubscription()).then(sub=>{
+    if(!sub){toast('Primero activa el resumen.');return}
+    return pushApi('/test',subBody(sub,dailyState().hour||8)).then(r=>{
+      if(r.ok){saveDaily({syncedAt:S.today,endpoint:sub.endpoint});toast('Enviado. Bloquea el teléfono: en unos segundos te llega el resumen.')}
+      else toast(r.status===429?'Espera unos segundos antes de probar de nuevo.':'No se pudo enviar la prueba. Revisa tu internet.');
+    });
+  }).catch(()=>toast('No se pudo enviar la prueba. Revisa tu internet.'));
+}
+async function dailyResync(force){
+  /* al abrir la app: confirma que la suscripción sigue viva y, una vez por semana o si cambió, se la recuerda al servidor */
+  if(resyncing||!dailyOn()||Notification.permission!=='granted')return;
+  resyncing=true;
+  try{
+    const d=dailyState(),reg=await swReady();if(!reg)return;
+    let sub=await reg.pushManager.getSubscription();
+    if(!force&&sub&&sub.endpoint===d.endpoint&&d.syncedAt&&diffDays(d.syncedAt,S.today)<7)return;
+    const key=await vapidKey();if(!key)return;
+    sub=await ensureSub(reg,key);
+    const r=await pushApi('/subscribe',subBody(sub,d.hour||8));
+    saveDaily({endpoint:sub.endpoint,syncedAt:r.ok?S.today:null});
+    syncSnapshot(true);refreshSettings();
+  }catch(e){}finally{resyncing=false}
+}
+function avisosCardHTML(){
+  if(!avisosCan()||lsGet(LS.avisosCard)||dailyOn()||badgeOn()||Notification.permission==='denied')return '';
+  const n=leftToday(allTasks(),S.today),push=pushCan();
+  return '<aside class="install news"><span class="bdemo"><img src="icon-192.png" alt="">'+(n?'<b aria-hidden="true">'+(n>99?'99+':n)+'</b>':'')+'</span><div><h3>'+(push?'Nuevo: tu día en la pantalla bloqueada':'Nuevo: número en el ícono')+'</h3><p>'+(push?'Cada mañana a las 8:00 te llega un resumen de lo que te queda, y el ícono muestra cuántas tareas faltan. La hora se cambia en Ajustes.':'El ícono puede mostrar cuántas tareas te quedan hoy. '+cap1(DEVICE)+' lo pide como permiso de notificaciones, pero por esto no te llega ninguna.')+'</p><button type="button" class="btn small primary" data-act="avisos-on">Activar</button></div><button type="button" class="x" data-act="avisos-card-x" aria-label="Cerrar">'+icon('close')+'</button></aside>';
+}
+function switchHTML(act,on,title,sub){return '<button type="button" class="s-switch" role="switch" aria-checked="'+on+'" data-act="'+act+'"'+(S.avisosBusy?' aria-busy="true"':'')+'><span class="t"><b>'+title+'</b><span>'+sub+'</span></span><span class="knob" aria-hidden="true"></span></button>'}
+function avisosNote(perm,dOn,bOn,d){
+  if(perm==='denied')return IS_IOS?'El iPhone tiene bloqueados los avisos de Pendientes. Para activarlos: Ajustes › Notificaciones › Pendientes › Permitir notificaciones.':'Tu dispositivo bloqueó los avisos de Pendientes. Actívalos en su configuración.';
+  if(dOn&&!d.syncedAt)return 'Falta confirmar el resumen con el servidor. Se reintenta solo cuando abres la app con internet.';
+  if(dOn)return 'Llega todos los días a la hora elegida'+(bOn?' y también pone al día el número del ícono.':'.')+(IS_IOS?' Si no te llega, revisa en el iPhone: Ajustes › Notificaciones › Pendientes.':'');
+  if(bOn)return 'El número se actualiza cada vez que usas la app.'+(IS_IOS?' Si no lo ves, revisa en el iPhone: Ajustes › Notificaciones › Pendientes › Globos.':'');
+  return cap1(DEVICE)+' te va a pedir permiso de notificaciones una sola vez.';
+}
+function avisosSectionHTML(){
+  if(!WEB)return '';
+  if(!avisosCan())return (IS_IOS&&!STANDALONE)?'<section class="s-block"><h3>Avisos</h3><p class="s-p">Cuando instales Pendientes en tu pantalla de inicio podrás recibir un resumen cada mañana y ver en el ícono cuántas tareas te quedan.</p></section>':'';
+  const perm=Notification.permission,d=dailyState(),dOn=dailyOn()&&perm==='granted',bOn=badgeOn();S.notifPerm=perm;
+  let h='<section class="s-block"><h3>Avisos</h3><div class="s-stack">';
+  if(pushCan()){
+    h+=switchHTML('s-daily',dOn,'Resumen de la mañana','Una notificación con lo que te queda hoy y lo que viene.');
+    if(dOn)h+='<div class="s-daily"><label class="s-hour"><span>Hora</span><select id="sDailyHour" aria-label="Hora del resumen">'+[6,7,8,9,10,11].map(x=>'<option value="'+x+'"'+(x===(d.hour||8)?' selected':'')+'>'+x+':00</option>').join('')+'</select></label><button type="button" class="btn small" data-act="s-daily-test"'+(testCooling()?' disabled':'')+'>Probar ahora</button></div>';
+  }
+  if(badgeCan())h+=switchHTML('s-badge',bOn,'Número en el ícono','Cuántas tareas te quedan hoy, contando las atrasadas.');
+  return h+'</div><p class="s-p s-note">'+avisosNote(perm,dOn,bOn,d)+'</p></section>';
+}
+
 /* ---- inicio ---- */
 document.querySelectorAll('[data-icon]').forEach(el=>el.insertAdjacentHTML('afterbegin',icon(el.dataset.icon)));
 applyTheme();
 const savedTab=lsGet(LS.tab);if(['hoy','semana','mes','muro'].indexOf(savedTab)>=0)S.tab=savedTab;
 connect();
+if(pushCan()){navigator.serviceWorker.ready.then(r=>{swReg=r}).catch(()=>{});setTimeout(()=>{if(Notification.permission!=='denied')vapidKey();dailyResync()},1500)}
 })();
 </script>
 </body>

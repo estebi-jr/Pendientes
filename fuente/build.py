@@ -8,6 +8,7 @@ Genera desde la fuente única (fuente/pendientes.src.html):
   - dist/pendientes-claude.html               -> versión conectada a Claude (publicar con la herramienta
                                                   Artifact pasando el url del artifact existente)
 La versión del service worker es un hash de index.html: si el código no cambió, sw.js no cambia.
+El service worker lleva una copia del bloque CORE (para armar el resumen de la mañana).
 """
 import hashlib, json, os, sys
 
@@ -43,6 +44,10 @@ manifest = {"name": "Pendientes", "short_name": "Pendientes", "description": "Tu
 open(os.path.join(ROOT, 'manifest.webmanifest'), 'w', encoding='utf-8').write(json.dumps(manifest, ensure_ascii=False, indent=2))
 ver = hashlib.sha1(web.encode()).hexdigest()[:8]
 sw = open(os.path.join(ROOT, 'fuente', 'sw.template.js'), encoding='utf-8').read().replace('__VERSION__', ver)
+# El service worker arma el resumen de la mañana con la misma lógica de fechas de la app: se le copia el bloque CORE.
+if src.count('/*CORE-START*/') != 1 or src.count('/*CORE-END*/') != 1 or sw.count('/*__CORE__*/') != 1:
+    sys.exit('FALLA: faltan los marcadores CORE en la fuente o /*__CORE__*/ en sw.template.js')
+sw = sw.replace('/*__CORE__*/', src.split('/*CORE-START*/')[1].split('/*CORE-END*/')[0].strip('\n'))
 open(os.path.join(ROOT, 'sw.js'), 'w', encoding='utf-8').write(sw)
 print('Listo. Versión web', ver)
 print('  web:    index.html, sw.js, manifest.webmanifest (raíz)')
