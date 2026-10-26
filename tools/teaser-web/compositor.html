@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Pendientes teaser — compositor</title>
+<style>
+@font-face{font-family:'Caveat';font-weight:400 700;src:url(/fonts/caveat-latin-wght-normal.woff2) format('woff2-variations')}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1920px;height:1080px;overflow:hidden;background:#EEF2FA}
+/* Paleta de la app (tema claro) */
+:root{
+  --bg:#F2F5FC; --ink:#0B1A45; --note-ink:#16307F; --late:#D2343A;
+  --pi1:#BFE1FF; --pi2:#C4EFCC; --pi3:#FFEE9E; --pi4:#FFCDE0;
+  --pi1-e:#93C8F3; --pi2-e:#94D9A6; --pi3-e:#EDD563; --pi4-e:#F2A5C3;
+}
+.w1{--pi-c:var(--pi1);--pi-e:var(--pi1-e)}
+.w2{--pi-c:var(--pi2);--pi-e:var(--pi2-e)}
+.w3{--pi-c:var(--pi3);--pi-e:var(--pi3-e)}
+.w4{--pi-c:var(--pi4);--pi-e:var(--pi4-e)}
+
+#bg{position:absolute;inset:0;
+  background:
+    radial-gradient(900px 640px at 12% 18%, rgba(191,225,255,.70), transparent 70%),
+    radial-gradient(820px 620px at 90% 86%, rgba(255,205,224,.62), transparent 70%),
+    radial-gradient(760px 520px at 86% 10%, rgba(255,238,158,.48), transparent 70%),
+    radial-gradient(760px 560px at 10% 92%, rgba(196,239,204,.58), transparent 70%),
+    radial-gradient(1100px 760px at 50% 52%, #FBFCFF, transparent 75%),
+    #EEF2FA}
+/* Se aclara cuando el día queda despejado */
+#glow{position:absolute;inset:0;opacity:0;background:radial-gradient(1250px 900px at 50% 50%, rgba(255,255,255,.92), rgba(255,255,255,.55) 55%, rgba(255,255,255,0) 85%)}
+#grain{position:absolute;inset:0;opacity:.022;mix-blend-mode:multiply;pointer-events:none}
+.layer{position:absolute;inset:0;transform-origin:960px 540px}
+
+/* Post-its del fondo: mismo papel que en la app (color por semana, esquina doblada, cinta) */
+.note{position:absolute;left:0;top:0;background:var(--pi-c);border-radius:3px 3px 4px 22px;
+  box-shadow:0 2px 3px rgba(16,34,90,.10),0 26px 44px -18px rgba(16,34,90,.42)}
+.note::after{content:"";position:absolute;right:0;bottom:0;width:15%;height:15%;
+  background:linear-gradient(to top left,transparent 50%,var(--pi-e) 50%);border-radius:0 0 3px 0}
+.note .tape{position:absolute;top:-6%;left:50%;width:42%;height:13%;transform:translateX(-50%) rotate(-3deg);
+  background:rgba(255,255,255,.62);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.note.old .tape{background:rgba(214,52,58,.46)}
+.note .ln{position:absolute;left:13%;height:4.2%;border-radius:99px;background:var(--note-ink);opacity:.16}
+.note .stamp{position:absolute;top:10%;right:8%;width:30%;height:13%;transform:rotate(9deg);border:2.5px solid var(--late);border-radius:5px;opacity:.72}
+
+/* Teléfono genérico, sin marca */
+#stage{position:absolute;inset:0;perspective:2700px;perspective-origin:960px 540px}
+#cam{position:absolute;left:0;top:0;transform-origin:0 0;transform-style:preserve-3d}
+#phone{position:relative;width:458px;height:960px}
+.body{position:absolute;inset:0;border-radius:69px;
+  background:linear-gradient(150deg,#6B7079 0%,#2E3138 16%,#1B1D22 46%,#2B2E35 78%,#5F646D 100%);
+  box-shadow:0 2px 0 rgba(255,255,255,.08) inset,0 70px 120px -40px rgba(11,26,69,.55),0 30px 60px -24px rgba(11,26,69,.35)}
+.bezel{position:absolute;inset:3px;border-radius:66px;background:#07080A}
+.screen{position:absolute;left:14px;top:14px;width:430px;height:932px;border-radius:55px;overflow:hidden;background:#0F1C52;isolation:isolate}
+
+/* App (captura real) */
+#app{position:absolute;left:0;top:0;width:430px;height:932px;overflow:hidden;background:var(--bg)}
+#appin{position:absolute;left:0;top:0;width:430px;height:932px;transform-origin:0 0}
+#appin img{position:absolute;left:0;top:0;width:430px;height:932px;display:block}
+.sbar{position:absolute;left:0;top:0;width:430px;height:54px;font:600 17.5px/1 Inter,-apple-system,sans-serif;letter-spacing:-.01em}
+.sbar .time{position:absolute;left:58px;top:20px}
+.sbar .ics{position:absolute;right:30px;top:20px;display:flex;gap:6px;align-items:center}
+#app .sbar{color:#0E1222}
+#lock .sbar{color:#fff}
+.homeind{position:absolute;left:50%;bottom:8px;width:144px;height:5px;margin-left:-72px;border-radius:3px}
+#app .homeind{background:#0E1222;opacity:.86}
+#lock .homeind{background:#fff;opacity:.9}
+
+/* Pantalla bloqueada (compuesta; el texto del aviso sale de morningSummary, la lógica real de la app) */
+#lock{position:absolute;left:0;top:0;width:430px;height:932px;overflow:hidden;transform-origin:215px 466px}
+#lock .wall{position:absolute;inset:-20px;
+  background:
+    radial-gradient(250px 230px at 16% 20%, rgba(191,225,255,.50), transparent 72%),
+    radial-gradient(270px 250px at 92% 62%, rgba(255,205,224,.42), transparent 72%),
+    radial-gradient(220px 200px at 82% 14%, rgba(255,238,158,.30), transparent 72%),
+    radial-gradient(260px 240px at 14% 88%, rgba(196,239,204,.36), transparent 72%),
+    linear-gradient(172deg,#2C4FC0 0%,#1C3388 42%,#101F5A 100%)}
+#lock .pad{position:absolute;left:50%;top:62px;margin-left:-8px}
+#lock .ldate{position:absolute;left:0;right:0;top:92px;text-align:center;color:rgba(255,255,255,.88);
+  font:600 21px/1 Inter,-apple-system,sans-serif;letter-spacing:-.01em}
+#lock .lclock{position:absolute;left:0;right:0;top:112px;text-align:center;color:rgba(255,255,255,.95);
+  font:600 112px/1 'Inter Display',Inter,-apple-system,sans-serif;letter-spacing:-.035em}
+#notif{position:absolute;left:12px;top:598px;width:406px;height:132px;border-radius:24px;padding:14px 16px 14px 14px;
+  background:rgba(247,248,252,.84);backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5);
+  box-shadow:0 10px 30px -14px rgba(5,10,40,.45);transform-origin:50% 50%;
+  font-family:Inter,-apple-system,sans-serif;color:#0B0F1E}
+#notif .nicon{position:absolute;left:14px;top:15px;width:38px;height:38px;border-radius:9px}
+#notif .ntitle{position:absolute;left:64px;right:58px;top:14px;font-weight:650;font-size:15px;line-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.01em}
+#notif .ntime{position:absolute;right:16px;top:15px;font-size:13px;line-height:20px;color:rgba(60,60,67,.62)}
+#notif .nbody{position:absolute;left:64px;right:16px;top:34px;font-size:15px;line-height:20px;white-space:pre-line;color:#1A1E2C;letter-spacing:-.005em}
+#lock .lbtn{position:absolute;bottom:46px;width:50px;height:50px;border-radius:50%;background:rgba(10,16,48,.38);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);display:flex;align-items:center;justify-content:center}
+#lock .lbtn.l{left:46px} #lock .lbtn.r{right:46px}
+
+#island{position:absolute;left:50%;top:11px;width:122px;height:36px;margin-left:-61px;border-radius:20px;background:#000;z-index:5}
+#glare{position:absolute;inset:0;pointer-events:none;mix-blend-mode:screen;z-index:7;
+  background:linear-gradient(118deg,rgba(255,255,255,0) 0%,rgba(255,255,255,0) 38%,rgba(255,255,255,.10) 50%,rgba(255,255,255,0) 62%,rgba(255,255,255,0) 100%);
+  background-size:300% 100%}
+/* Toque visible */
+#touch{position:absolute;left:0;top:0;width:0;height:0;z-index:6}
+#touch .dot{position:absolute;left:-24px;top:-24px;width:48px;height:48px;border-radius:50%;
+  background:rgba(22,32,64,.20);box-shadow:0 0 0 2.5px rgba(255,255,255,.92),0 4px 14px rgba(11,26,69,.28)}
+#touch .rip{position:absolute;left:-24px;top:-24px;width:48px;height:48px;border-radius:50%;border:2px solid rgba(255,255,255,.95);
+  box-shadow:0 0 0 1px rgba(11,26,69,.12)}
+</style>
+</head>
+<body>
+<div id="bg"></div>
+<div id="glow"></div>
+<canvas id="grain" width="960" height="540" style="width:1920px;height:1080px"></canvas>
+<div class="layer" id="far"></div>
+<div id="stage"><div id="cam"><div id="phone">
+  <div class="body"></div><div class="bezel"></div>
+  <div class="screen">
+    <div id="lock">
+      <div class="wall"></div>
+      <div class="sbar"><span class="ics" id="icsL"></span></div>
+      <svg class="pad" width="16" height="21" viewBox="0 0 16 21"><path d="M3.5 9V6.2a4.5 4.5 0 0 1 9 0V9" fill="none" stroke="#fff" stroke-width="2.1" stroke-opacity=".9"/><rect x="0.5" y="8.5" width="15" height="12" rx="3" fill="#fff" fill-opacity=".9"/></svg>
+      <div class="ldate">lunes 26 de octubre</div>
+      <div class="lclock">8:00</div>
+      <div id="notif"><img class="nicon" src="/icon/icon-180.png" alt=""><div class="ntitle" id="nTitle"></div><div class="ntime">ahora</div><div class="nbody" id="nBody"></div></div>
+      <div class="lbtn l"><svg width="16" height="24" viewBox="0 0 16 24"><path d="M2 1.5h12v4.2l-3.2 4.6V22a1 1 0 0 1-1 1H6.2a1 1 0 0 1-1-1V10.3L2 5.7z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/><circle cx="8" cy="14.5" r="1.5" fill="#fff"/></svg></div>
+      <div class="lbtn r"><svg width="24" height="19" viewBox="0 0 24 19"><path d="M3 4.5h3.6l1.8-2.6h7.2l1.8 2.6H21a2 2 0 0 1 2 2v9.6a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="10.8" r="3.7" fill="none" stroke="#fff" stroke-width="1.8"/></svg></div>
+      <div class="homeind"></div>
+    </div>
+    <div id="app"><div id="appin">
+      <img id="scr" alt="">
+      <div class="sbar"><span class="time">8:00</span><span class="ics" id="icsA"></span></div>
+      <div class="homeind"></div>
+    </div></div>
+    <div id="island"></div>
+    <div id="touch"><i class="rip"></i><i class="dot"></i></div>
+    <div id="glare"></div>
+  </div>
+</div></div></div>
+<div class="layer" id="near"></div>
+<script>
+'use strict';
+let CFG = null, NOTES = [];
+const TAU = Math.PI * 2;
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, u) => a + (b - a) * u;
+const sstep = u => { u = clamp(u, 0, 1); return u * u * u * (u * (u * 6 - 15) + 10); };   // smootherstep
+const ease = u => { u = clamp(u, 0, 1); return u < .5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; };
+const eout = u => { u = clamp(u, 0, 1); return 1 - Math.pow(1 - u, 3); };
+const prog = (t, a, b) => clamp((t - a) / (b - a), 0, 1);
+
+const ICONS = '<svg width="19" height="12" viewBox="0 0 19 12"><rect x="0" y="8" width="3.2" height="4" rx="1" fill="currentColor"/><rect x="5" y="5.5" width="3.2" height="6.5" rx="1" fill="currentColor"/><rect x="10" y="3" width="3.2" height="9" rx="1" fill="currentColor"/><rect x="15" y="0" width="3.2" height="12" rx="1" fill="currentColor"/></svg>' +
+  '<svg width="17" height="12" viewBox="0 0 17 12"><path d="M8.5 11.6 6 9a3.6 3.6 0 0 1 5 0z" fill="currentColor"/><path d="M3.6 6.7a7 7 0 0 1 9.8 0l-1.5 1.5a4.9 4.9 0 0 0-6.8 0z" fill="currentColor"/><path d="M1 4a10.7 10.7 0 0 1 15 0l-1.5 1.5a8.6 8.6 0 0 0-12 0z" fill="currentColor"/></svg>' +
+  '<svg width="28" height="13" viewBox="0 0 28 13"><rect x=".6" y=".6" width="23.8" height="11.8" rx="3.6" fill="none" stroke="currentColor" stroke-opacity=".4" stroke-width="1.1"/><rect x="2.3" y="2.3" width="17.6" height="8.4" rx="2.1" fill="currentColor"/><path d="M26 4.4v4.2a2.2 2.2 0 0 0 0-4.2z" fill="currentColor" fill-opacity=".45"/></svg>';
+document.getElementById('icsA').innerHTML = ICONS;
+document.getElementById('icsL').innerHTML = ICONS;
+
+// Grano fijo (no cambia entre cuadros): evita bandas en los degradés al comprimir.
+(() => { const c = document.getElementById('grain'), x = c.getContext('2d'), d = x.createImageData(960, 540);
+  let a = 11; const r = () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  for (let i = 0; i < d.data.length; i += 4) { const v = 128 + (r() - .5) * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; }
+  x.putImageData(d, 0, 0); })();
+
+function noteEl(n) {
+  const el = document.createElement('div');
+  el.className = 'note w' + n.w + (n.old ? ' old' : '');
+  el.style.width = n.size + 'px'; el.style.height = Math.round(n.size * (n.tall || 1.04)) + 'px';
+  let h = n.tape ? '<span class="tape"></span>' : '';
+  if (n.old) h += '<span class="stamp"></span>';
+  (n.lines || []).forEach((l, i) => { h += '<span class="ln" style="top:' + (30 + i * 13) + '%;width:' + l + '%"></span>'; });
+  el.innerHTML = h;
+  if (n.blur) el.style.filter = 'blur(' + n.blur + 'px)';
+  return el;
+}
+
+window.setup = cfg => {
+  CFG = cfg;
+  NOTES = cfg.notes.map(n => { const el = noteEl(n); document.getElementById(n.depth > 1 ? 'near' : 'far').appendChild(el); return Object.assign({ el }, n); });
+  document.getElementById('nTitle').textContent = cfg.notif.title;
+  document.getElementById('nBody').textContent = cfg.notif.body;
+  return document.getElementById('notif').querySelector('img').decode().then(() => true);
+};
+
+// Cámara: interpolación entre llaves con ease in-out (velocidad cero en cada llave).
+function camera(t) {
+  const K = CFG.camera;
+  let k = 0; while (k < K.length - 2 && t > K[k + 1][0]) k++;
+  const a = K[k], b = K[k + 1], u = sstep((t - a[0]) / (b[0] - a[0]));
+  const z = Math.exp(Math.log(a[1]) + (Math.log(b[1]) - Math.log(a[1])) * u);
+  return { z, fx: a[2] + (b[2] - a[2]) * u, fy: a[3] + (b[3] - a[3]) * u };
+}
+
+// Movimientos periódicos (período = loop): todo vuelve exacto al cuadro 1.
+function drift(t) {
+  const p = TAU * t / CFG.T;
+  return {
+    yaw: -2.5 + 5.0 * Math.sin(p + 0.35),
+    pitch: 2.6 + 1.6 * Math.sin(2 * p + 1.1),
+    roll: 0.7 * Math.sin(p + 2.0),
+    fy: 7 * Math.sin(2 * p + 0.4),
+  };
+}
+
+// Desplazamiento de un post-it del fondo: se va flotando al completar una tarea y vuelve antes del empalme.
+function away(n, t) {
+  if (n.leave == null) return 0;
+  const t0 = CFG.clears[n.leave] + (n.lag || 0), go = sstep((t - t0) / 2.2);
+  const r0 = CFG.ret[0] + (n.rlag || 0), back = sstep((t - r0) / (CFG.ret[1] - r0));
+  return go * (1 - back);
+}
+
+// Pantalla bloqueada <-> app
+function screenState(t, touch) {
+  const L = CFG.lock, app = document.getElementById('app'), appin = document.getElementById('appin');
+  const lock = document.getElementById('lock'), notif = document.getElementById('notif');
+  const R = CFG.notifRect;   // [x, y, w, h]
+  // valores por defecto: app a pantalla completa, pantalla bloqueada oculta
+  let appShow = true, lockShow = false, lockOnTop = false;
+  let box = [0, 0, 430, 932], rad = 0, inS = 1, inOp = 1;
+  let lockTf = 'none', lockOp = 1, lockBlur = 0, nOp = 1, nTf = 'none';
+  if (t < L.open[0] || t >= L.down[1]) {
+    // bloqueada: solo la pantalla bloqueada
+    appShow = false; lockShow = true;
+    if (t >= L.down[1]) {
+      // el aviso del día siguiente llega desde abajo y se asienta
+      const u = prog(t, L.notif[0], L.notif[1]), e = eout(u);
+      nOp = sstep(u / 0.55);
+      nTf = 'translateY(' + (46 * (1 - e)).toFixed(3) + 'px) scale(' + (0.94 + 0.06 * e).toFixed(5) + ')';
+    }
+    if (touch && t < L.open[0] + 0.2) nTf = 'scale(' + (1 - 0.035 * touch.p).toFixed(5) + ')';
+  } else if (t < L.open[1]) {
+    // la app se abre desde el aviso
+    lockShow = true;
+    const u = prog(t, L.open[0], L.open[1]), e = eout(u);
+    box = [lerp(R[0], 0, e), lerp(R[1], 0, e), lerp(R[2], 430, e), lerp(R[3], 932, e)];
+    rad = lerp(24, 55, e);
+    inS = lerp(R[2] / 430, 1, e);
+    inOp = sstep(u / 0.32);
+    nOp = 1 - sstep(u / 0.3);
+    nTf = 'scale(' + (1 - 0.035 * (touch ? touch.p : 0)).toFixed(5) + ')';
+    lockTf = 'scale(' + (1 + 0.07 * e).toFixed(5) + ')';
+    lockOp = 1 - sstep((u - 0.25) / 0.75);
+    lockBlur = 7 * e;
+  } else if (t >= L.down[0]) {
+    // el día terminó: la pantalla bloqueada baja y tapa la app
+    lockShow = true; lockOnTop = true; nOp = 0;
+    const u = sstep(prog(t, L.down[0], L.down[1]));
+    lockTf = 'translateY(' + (-932 * (1 - u)).toFixed(3) + 'px)';
+  }
+  app.style.display = appShow ? 'block' : 'none';
+  lock.style.display = lockShow ? 'block' : 'none';
+  app.style.zIndex = lockOnTop ? 1 : 3; lock.style.zIndex = lockOnTop ? 3 : 1;
+  app.style.left = box[0].toFixed(3) + 'px'; app.style.top = box[1].toFixed(3) + 'px';
+  app.style.width = box[2].toFixed(3) + 'px'; app.style.height = box[3].toFixed(3) + 'px';
+  app.style.borderRadius = rad.toFixed(2) + 'px';
+  // contenido de la app escalado parejo y centrado en la caja (como al abrir una app desde un aviso en iOS)
+  const iw = 430 * inS, ih = 932 * inS;
+  appin.style.transform = 'translate(' + ((box[2] - iw) / 2).toFixed(3) + 'px,' + ((box[3] - ih) / 2).toFixed(3) + 'px) scale(' + inS.toFixed(5) + ')';
+  appin.style.opacity = inOp.toFixed(4);
+  lock.style.transform = lockTf; lock.style.opacity = lockOp.toFixed(4);
+  lock.style.filter = lockBlur > 0.01 ? 'blur(' + lockBlur.toFixed(2) + 'px)' : 'none';
+  notif.style.opacity = nOp.toFixed(4); notif.style.transform = nTf;
+}
+
+window.frame = async (i, src, touch) => {
+  const t = i / CFG.fps, c = camera(t), d = drift(t);
+  const S = CFG.base * c.z;
+  // Pantalla
+  const img = document.getElementById('scr');
+  if (img.dataset.src !== src) { img.src = src; img.dataset.src = src; await img.decode(); }
+  screenState(t, touch);
+  // Teléfono: zoom real de layout (la imagen se re-muestrea en alta calidad) + rotación 3D suave
+  const phone = document.getElementById('phone');
+  phone.style.zoom = S.toFixed(5);
+  const Fx = (14 + c.fx) * S, Fy = (14 + c.fy) * S;
+  document.getElementById('cam').style.transform =
+    'translate3d(960px,' + (540 + d.fy).toFixed(3) + 'px,0) rotateX(' + d.pitch.toFixed(4) + 'deg) rotateY(' + d.yaw.toFixed(4) +
+    'deg) rotateZ(' + d.roll.toFixed(4) + 'deg) translate3d(' + (-Fx).toFixed(3) + 'px,' + (-Fy).toFixed(3) + 'px,0)';
+  document.getElementById('glare').style.backgroundPosition = (50 + d.yaw * 9).toFixed(2) + '% 0';
+  // Toque
+  const tc = document.getElementById('touch');
+  if (touch && touch.a > 0.002) {
+    tc.style.display = 'block';
+    tc.style.transform = 'translate(' + touch.x.toFixed(2) + 'px,' + touch.y.toFixed(2) + 'px)';
+    const dot = tc.querySelector('.dot'), rip = tc.querySelector('.rip');
+    const sc = (1.18 - 0.18 * Math.min(1, touch.a * 1.6)) * (1 - 0.16 * touch.p);
+    dot.style.opacity = touch.a.toFixed(4);
+    dot.style.transform = 'scale(' + sc.toFixed(4) + ')';
+    dot.style.background = 'rgba(22,32,64,' + (0.20 + 0.14 * touch.p).toFixed(3) + ')';
+    if (touch.rip >= 0) { const u = ease(touch.rip); rip.style.opacity = (0.75 * (1 - u)).toFixed(4); rip.style.transform = 'scale(' + (1 + 0.9 * u).toFixed(4) + ')'; }
+    else rip.style.opacity = 0;
+  } else tc.style.display = 'none';
+  // Fondo que se aclara con el día despejado (vuelve a 0 antes del empalme)
+  const G = CFG.glow;
+  document.getElementById('glow').style.opacity = (G[4] * sstep(prog(t, G[0], G[1])) * (1 - sstep(prog(t, G[2], G[3])))).toFixed(4);
+  // Fondo con paralaje
+  const panX = -(c.fx - 215) * CFG.base, panY = -(c.fy - 466) * CFG.base;
+  for (const n of NOTES) {
+    const p = TAU * t / CFG.T, dep = n.depth;
+    const zz = 1 + (c.z - 1) * 0.30 * dep;
+    let x = n.x + panX * 0.22 * dep - d.yaw * 7 * dep + n.ax * Math.sin(p * n.k + n.ph);
+    let y = n.y + panY * 0.22 * dep + d.fy * 0.6 * dep + n.ay * Math.sin(p * n.k2 + n.ph * 1.7);
+    // escala alrededor del centro del cuadro (acercamiento de cámara)
+    x = 960 + (x - 960) * zz; y = 540 + (y - 540) * zz;
+    let rot = n.r + n.ar * Math.sin(p * n.k + n.ph + 1);
+    const g = away(n, t);
+    if (g > 0) {
+      const dx = n.x - 960, dy = n.y - 540, L = Math.hypot(dx, dy) || 1;
+      x += dx / L * n.out * g; y += dy / L * n.out * g - 60 * g; rot += 24 * g * (dx < 0 ? -1 : 1);
+    }
+    n.el.style.transform = 'translate(' + (x - n.size / 2).toFixed(2) + 'px,' + (y - n.size / 2).toFixed(2) + 'px) rotate(' + rot.toFixed(3) + 'deg) scale(' + (zz * (n.sc || 1)).toFixed(4) + ')';
+  }
+  return true;
+};
+</script>
+</body>
+</html>
